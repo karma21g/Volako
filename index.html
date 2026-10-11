@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Volako — Mon budget</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#13231f">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Volako">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-auth-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#13231f;
+    --panel:#1b332c;
+    --panel-2:#20392f;
+    --line:#2f4a3f;
+    --cream:#f1ede1;
+    --cream-dim:#b9c7bf;
+    --gold:#d4af6a;
+    --gold-2:#e8c784;
+    --emerald:#4caf7d;
+    --coral:#d9695a;
+    --salaire:#6aa8d4;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--cream);font-family:'IBM Plex Sans',sans-serif;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);}
+  h1,h2,h3{font-family:'Fraunces',serif;font-weight:700;margin:0;}
+  .wrap{max-width:480px;margin:0 auto;padding:18px 16px 90px;}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  .topbar .brand{font-size:19px;}
+  .topbar .brand span{color:var(--gold-2);}
+
+  .btn{
+    font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:14px;
+    background:var(--emerald);color:#0d1f17;border:none;border-radius:8px;
+    padding:12px 18px;cursor:pointer;transition:opacity .15s ease;width:100%;
+  }
+  .btn:hover{opacity:.9;}
+  .btn.secondary{background:transparent;border:1px solid var(--line);color:var(--cream-dim);}
+  .btn.danger{background:var(--coral);color:#fff;}
+  .btn.small{width:auto;padding:8px 14px;font-size:13px;}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px;}
+
+  /* --- Solde --- */
+  .balance-card{text-align:center;padding:22px 18px;}
+  .balance-toggle{display:flex;background:var(--panel-2);border-radius:20px;padding:3px;margin:0 auto 14px;width:fit-content;}
+  .balance-toggle button{border:none;background:transparent;color:var(--cream-dim);font-size:12px;font-weight:600;
+    padding:6px 14px;border-radius:16px;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;}
+  .balance-toggle button.active{background:var(--gold);color:#1b1206;}
+  .balance-amount{font-family:'Fraunces',serif;font-size:34px;font-weight:700;color:var(--gold-2);}
+  .balance-amount.negative{color:var(--coral);}
+  .balance-sub{color:var(--cream-dim);font-size:12.5px;margin-top:4px;}
+
+  .stat-row{display:flex;gap:10px;margin-top:14px;}
+  .stat{flex:1;background:var(--panel-2);border-radius:10px;padding:10px;text-align:center;}
+  .stat .v{font-size:15px;font-weight:600;}
+  .stat .l{font-size:11px;color:var(--cream-dim);margin-top:2px;}
+
+  /* --- Forms --- */
+  label{display:block;font-size:12.5px;color:var(--cream-dim);margin:10px 0 4px;}
+  input, select{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+    color:var(--cream);padding:11px 12px;font-size:14px;font-family:'IBM Plex Sans',sans-serif;
+  }
+  .seg{display:flex;background:var(--panel-2);border-radius:10px;padding:3px;margin-top:4px;}
+  .seg button{flex:1;border:none;background:transparent;color:var(--cream-dim);font-size:13px;font-weight:600;
+    padding:9px 0;border-radius:8px;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;}
+  .seg button.active{background:var(--emerald);color:#0d1f17;}
+
+  .chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
+  .chip{background:var(--panel-2);border:1px solid var(--line);border-radius:20px;padding:7px 14px;font-size:13px;cursor:pointer;}
+  .chip.active{background:var(--gold);color:#1b1206;border-color:var(--gold);}
+
+  /* --- Listes --- */
+  .tx-item{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);}
+  .tx-item:last-child{border-bottom:none;}
+  .tx-icon{width:36px;height:36px;border-radius:50%;background:var(--panel-2);display:flex;align-items:center;justify-content:center;font-size:17px;flex:0 0 36px;}
+  .tx-main{flex:1;min-width:0;}
+  .tx-main .t1{font-size:14px;font-weight:600;}
+  .tx-main .t2{font-size:11.5px;color:var(--cream-dim);}
+  .tx-amount{font-weight:700;font-size:14px;white-space:nowrap;}
+  .tx-amount.income{color:var(--emerald);}
+  .tx-amount.expense{color:var(--coral);}
+
+  .empty{color:var(--cream-dim);font-size:13px;text-align:center;padding:20px 0;}
+
+  /* --- Missions --- */
+  .mission-card{cursor:pointer;}
+  .mission-card .status{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 9px;border-radius:10px;margin-bottom:6px;}
+  .mission-card .status.en_cours{background:var(--salaire);color:#071118;}
+  .mission-card .status.terminee{background:var(--gold);color:#1b1206;}
+  .mission-ecart{font-size:13px;margin-top:8px;}
+  .mission-ecart.pos{color:var(--emerald);}
+  .mission-ecart.neg{color:var(--coral);}
+
+  /* --- Catégories admin --- */
+  .cat-item{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);}
+  .cat-item:last-child{border-bottom:none;}
+
+  /* --- Nav --- */
+  .bottom-nav{
+    position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--line);
+    display:flex;justify-content:space-around;padding:8px 4px calc(8px + env(safe-area-inset-bottom,0px));
+    max-width:480px;margin:0 auto;
+  }
+  .nav-item{display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--cream-dim);
+    font-size:10.5px;background:none;border:none;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;padding:4px 8px;}
+  .nav-item .ic{font-size:19px;}
+  .nav-item.active{color:var(--gold-2);}
+
+  .hidden{display:none !important;}
+  .screen{animation:fadein .15s ease;}
+  @keyframes fadein{from{opacity:0}to{opacity:1}}
+
+  .page-title{font-size:21px;margin-bottom:14px;}
+  .section-title{font-size:14px;color:var(--cream-dim);margin:18px 0 8px;text-transform:uppercase;letter-spacing:.04em;}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(10,15,12,.72);z-index:60;display:flex;align-items:flex-end;justify-content:center;}
+  .modal{background:var(--panel);border-radius:16px 16px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));
+    width:100%;max-width:480px;max-height:85vh;overflow-y:auto;}
+  .modal h2{font-size:18px;margin-bottom:12px;}
+  .modal-close{float:right;background:none;border:none;color:var(--cream-dim);font-size:20px;cursor:pointer;}
+
+  canvas{max-width:100%;}
+
+  .auth-wrap{max-width:420px;margin:0 auto;padding:60px 20px;min-height:100vh;display:flex;flex-direction:column;justify-content:center;}
+  .auth-wrap h1{font-size:28px;margin-bottom:6px;text-align:center;}
+  .auth-wrap .sub{color:var(--cream-dim);font-size:13px;text-align:center;margin-bottom:24px;}
+  .auth-error{color:var(--coral);font-size:13px;margin-top:10px;min-height:1em;}
+  .link-btn{background:none;border:none;color:var(--gold-2);font-size:13px;cursor:pointer;text-decoration:underline;padding:0;}
+  textarea#fb-config-input{width:100%;min-height:150px;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:8px;color:var(--cream);padding:11px 12px;font-size:12.5px;font-family:monospace;}
+</style>
+</head>
+<body>
+
+<!-- ÉCRAN : configuration Firebase (une seule fois, avant tout) -->
+<div id="screen-fbconfig" class="auth-wrap hidden">
+  <h1>Vola<span style="color:var(--gold-2)">ko</span></h1>
+  <div class="sub">Colle la configuration de ton projet Firebase pour activer la synchronisation et les comptes.</div>
+  <div class="card">
+    <label>Configuration Firebase (objet JS copié depuis la console Firebase)</label>
+    <textarea id="fb-config-input" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...", ...}'></textarea>
+    <div class="auth-error" id="fbconfig-error"></div>
+    <button class="btn" id="btn-save-fbconfig" style="margin-top:14px;">Continuer</button>
+  </div>
+</div>
+
+<!-- ÉCRAN : connexion / inscription -->
+<div id="screen-auth" class="auth-wrap hidden">
+  <h1>Vola<span style="color:var(--gold-2)">ko</span></h1>
+  <div class="sub">Connecte-toi pour accéder à ton budget.</div>
+  <div class="card">
+    <label>Adresse email</label>
+    <input type="email" id="auth-email" placeholder="toi@exemple.com">
+    <label>Mot de passe</label>
+    <input type="password" id="auth-password" placeholder="••••••••">
+    <div class="auth-error" id="auth-error"></div>
+    <button class="btn" id="btn-auth-login" style="margin-top:14px;">Se connecter</button>
+    <button class="btn secondary" id="btn-auth-signup" style="margin-top:10px;">Créer un compte</button>
+  </div>
+</div>
+
+<div id="app-shell" class="hidden">
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">Vola<span>ko</span></div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span id="offline-badge" class="hidden" style="font-size:11px;background:var(--coral);color:#fff;padding:3px 9px;border-radius:10px;">Hors ligne</span>
+      <button class="btn small secondary" id="btn-logout">Déconnexion</button>
+    </div>
+  </div>
+
+  <!-- ÉCRAN ACCUEIL -->
+  <div id="screen-accueil" class="screen">
+    <div class="card balance-card">
+      <div class="balance-toggle">
+        <button id="toggle-global" class="active">Solde global</button>
+        <button id="toggle-salaire">Solde salaire</button>
+      </div>
+      <div class="balance-amount" id="balance-amount">0 Ar</div>
+      <div class="balance-sub" id="balance-sub">Toutes rentrées confondues, dépenses déduites</div>
+      <div class="stat-row">
+        <div class="stat"><div class="v" id="stat-in">0 Ar</div><div class="l">Entrées</div></div>
+        <div class="stat"><div class="v" id="stat-out">0 Ar</div><div class="l">Dépenses</div></div>
+      </div>
+      <div style="margin-top:16px;text-align:left;">
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--cream-dim);margin-bottom:5px;">
+          <span>Budget du mois</span><span id="gauge-pct">0%</span>
+        </div>
+        <div style="background:var(--panel-2);border-radius:20px;height:10px;overflow:hidden;">
+          <div id="gauge-bar" style="height:100%;width:0%;border-radius:20px;background:var(--emerald);transition:width .3s ease;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title" style="margin-top:0">Répartition des dépenses</div>
+      <canvas id="chart-cat-home" height="180"></canvas>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="section-title" style="margin:0">Dernières opérations</div>
+        <button class="btn small secondary" id="btn-see-all">Tout voir</button>
+      </div>
+      <div id="recent-list"></div>
+    </div>
+  </div>
+
+  <!-- ÉCRAN DÉPENSES / DÉTAIL -->
+  <div id="screen-depenses" class="screen hidden">
+    <h2 class="page-title">Détail des opérations</h2>
+    <div class="seg" id="filter-type">
+      <button data-f="all" class="active">Toutes</button>
+      <button data-f="expense">Dépenses</button>
+      <button data-f="income">Entrées</button>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <div id="full-list"></div>
+    </div>
+  </div>
+
+  <!-- ÉCRAN MISSIONS -->
+  <div id="screen-missions" class="screen hidden">
+    <h2 class="page-title">Missions</h2>
+    <button class="btn" id="btn-new-mission" style="margin-bottom:14px;">+ Nouvelle mission</button>
+    <div id="mission-list"></div>
+  </div>
+
+  <!-- ÉCRAN GRAPHIQUES -->
+  <div id="screen-graphiques" class="screen hidden">
+    <h2 class="page-title">Graphiques</h2>
+    <div class="seg" id="period-seg">
+      <button data-p="day" class="active">Jour</button>
+      <button data-p="week">Semaine</button>
+      <button data-p="month">Mois</button>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <div class="section-title" style="margin-top:0">Évolution des dépenses</div>
+      <canvas id="chart-evolution" height="200"></canvas>
+    </div>
+    <div class="card">
+      <div class="section-title" style="margin-top:0">Répartition par catégorie</div>
+      <canvas id="chart-cat-full" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- ÉCRAN ÉPARGNE -->
+  <div id="screen-epargne" class="screen hidden">
+    <h2 class="page-title">Épargne</h2>
+    <div class="card balance-card">
+      <div class="balance-sub">Mis de côté, séparé du budget courant</div>
+      <div class="balance-amount" id="savings-balance">0 Ar</div>
+    </div>
+    <div class="card">
+      <div style="display:flex;gap:10px;">
+        <button class="btn" id="btn-savings-deposit">+ Déposer</button>
+        <button class="btn secondary" id="btn-savings-spend">− Dépenser</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title" style="margin-top:0;">Évolution</div>
+      <canvas id="chart-savings" height="180"></canvas>
+    </div>
+    <div class="card">
+      <div class="section-title" style="margin-top:0;">Mouvements</div>
+      <div id="savings-log"></div>
+    </div>
+  </div>
+
+  <!-- ÉCRAN ADMIN -->
+  <div id="screen-admin" class="screen hidden">
+    <h2 class="page-title">Catégories</h2>
+    <div class="card">
+      <label>Nouvelle catégorie</label>
+      <div style="display:flex;gap:8px;">
+        <input id="new-cat-input" placeholder="Ex: Santé">
+        <button class="btn small" id="btn-add-cat" style="width:auto;">Ajouter</button>
+      </div>
+    </div>
+    <div class="card">
+      <div id="cat-list"></div>
+    </div>
+
+    <h2 class="page-title" style="font-size:18px;margin-top:22px;">Notifications</h2>
+    <div class="card">
+      <div id="notif-status" style="font-size:13px;color:var(--cream-dim);margin-bottom:12px;"></div>
+      <button class="btn" id="btn-enable-notif">Activer les notifications</button>
+      <div style="font-size:11.5px;color:var(--cream-dim);margin-top:10px;">
+        Récap chaque samedi (7 derniers jours) et en début de mois, + alerte à 50%, 75% et 100% du budget mensuel dépensé.
+        Ces rappels se déclenchent à l'ouverture de l'app (pas en arrière-plan si l'app est fermée).
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <button class="nav-item active" data-screen="accueil"><span class="ic">🏠</span>Accueil</button>
+    <button class="nav-item" data-screen="depenses"><span class="ic">🧾</span>Détails</button>
+    <button class="nav-item" data-screen="missions"><span class="ic">🧭</span>Missions</button>
+    <button class="nav-item" data-screen="graphiques"><span class="ic">📊</span>Graphiques</button>
+    <button class="nav-item" data-screen="epargne"><span class="ic">🐷</span>Épargne</button>
+    <button class="nav-item" data-screen="admin"><span class="ic">🏷️</span>Catégories</button>
+  </div>
+
+  <!-- Bouton flottant ajouter -->
+  <div style="position:fixed;bottom:76px;right:max(16px, calc((100vw - 480px)/2 + 16px));z-index:40;">
+    <button id="btn-add-fab" style="width:56px;height:56px;border-radius:50%;background:var(--gold);color:#1b1206;
+      border:none;font-size:26px;box-shadow:0 4px 10px rgba(0,0,0,.4);cursor:pointer;">+</button>
+  </div>
+</div>
+
+<!-- MODAL : ajouter une opération -->
+<div id="modal-add" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" id="close-modal-add">×</button>
+    <h2 id="modal-add-title">Nouvelle opération</h2>
+    <div class="seg" id="add-type-seg">
+      <button data-t="expense" class="active">Dépense</button>
+      <button data-t="income">Entrée d'argent</button>
+    </div>
+
+    <div id="expense-fields">
+      <label>Montant (Ar)</label>
+      <input type="number" id="exp-amount" placeholder="Ex: 15000">
+      <label>Catégorie</label>
+      <div class="chip-row" id="exp-cat-chips"></div>
+      <label>Date de début</label>
+      <input type="date" id="exp-date">
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+        <input type="checkbox" id="exp-spread" style="width:auto;"> Étaler cette dépense sur plusieurs jours
+      </label>
+      <div id="exp-spread-wrap" class="hidden">
+        <label>Sur combien de jours ?</label>
+        <input type="number" id="exp-duration" min="2" value="7" placeholder="Ex: 7">
+      </div>
+      <label>Motif</label>
+      <input type="text" id="exp-motif" placeholder="Ex: Marché, taxi-be...">
+      <label>Lier à une mission (optionnel)</label>
+      <select id="exp-mission"><option value="">— Aucune —</option></select>
+    </div>
+
+    <div id="income-fields" class="hidden">
+      <label>Montant (Ar)</label>
+      <input type="number" id="inc-amount" placeholder="Ex: 500000">
+      <label>Source</label>
+      <div class="seg" id="inc-source-seg">
+        <button data-s="salaire" class="active">Salaire</button>
+        <button data-s="autre">Autre rentrée</button>
+      </div>
+      <div id="inc-autre-type-wrap" class="hidden">
+        <label>Type de rentrée</label>
+        <select id="inc-autre-type">
+          <option value="cadeau">Cadeau</option>
+          <option value="remboursement">Remboursement</option>
+          <option value="indemnite_mission">Indemnité de mission</option>
+          <option value="autre">Autre</option>
+        </select>
+        <div id="inc-mission-wrap" class="hidden">
+          <label>Mission concernée</label>
+          <select id="inc-mission"></select>
+        </div>
+      </div>
+      <label>Date</label>
+      <input type="date" id="inc-date">
+      <label>Motif</label>
+      <input type="text" id="inc-motif" placeholder="Ex: Paie d'octobre">
+    </div>
+
+    <button class="btn" id="btn-save-tx" style="margin-top:18px;">Enregistrer</button>
+    <button class="btn danger hidden" id="btn-delete-tx" style="margin-top:10px;">Supprimer cette opération</button>
+  </div>
+</div>
+
+<!-- MODAL : nouvelle mission -->
+<div id="modal-mission" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" id="close-modal-mission">×</button>
+    <h2>Nouvelle mission</h2>
+    <label>Nom de la mission</label>
+    <input type="text" id="mis-name" placeholder="Ex: Mission Toamasina">
+    <label>Date de début</label>
+    <input type="date" id="mis-start">
+    <button class="btn" id="btn-save-mission" style="margin-top:18px;">Créer la mission</button>
+  </div>
+</div>
+
+<!-- MODAL : détail / clôture mission -->
+<div id="modal-mission-detail" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" id="close-modal-mission-detail">×</button>
+    <h2 id="mdd-title">Mission</h2>
+    <div class="card" id="mdd-summary"></div>
+    <div class="section-title" style="margin-top:0;">Dépenses liées</div>
+    <div id="mdd-expenses"></div>
+    <div id="mdd-close-form" class="hidden" style="margin-top:14px;">
+      <label>Indemnité reçue (Ar)</label>
+      <input type="number" id="mdd-indemnite" placeholder="Ex: 300000">
+      <button class="btn" id="btn-close-mission" style="margin-top:12px;">Clôturer la mission</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL : mouvement d'épargne -->
+<div id="modal-savings" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" id="close-modal-savings">×</button>
+    <h2 id="savings-modal-title">Déposer dans l'épargne</h2>
+    <label>Montant (Ar)</label>
+    <input type="number" id="savings-amount" placeholder="Ex: 50000">
+    <label>Date</label>
+    <input type="date" id="savings-date">
+    <label>Motif</label>
+    <input type="text" id="savings-motif" placeholder="Ex: urgence santé, réparation moto...">
+    <button class="btn" id="btn-save-savings" style="margin-top:16px;">Valider</button>
+  </div>
+</div>
+</div><!-- /app-shell -->
+
+<script>
+/* ================= STOCKAGE : Firebase (Firestore) + repli local ================= */
+const STORAGE_KEY = "volako_state_v1";           // repli local si Firebase non configuré
+const FB_CONFIG_KEY = "volako_firebase_config";  // config publique du projet (non sensible)
+
+let fbApp = null, fbAuth = null, fbDb = null, currentUser = null;
+let saveTimer = null;
+
+function defaultState(){
+  return {
+    categories: ["Nourriture","Transport","Habillement","Plaisir","Autre"],
+    transactions: [],
+    missions: [],
+    savings: { balance: 0, log: [] },
+    notifState: { thresholdMonth: null, thresholdLevel: 0, lastWeeklyRecap: null, lastMonthlyRecap: null }
+  };
+}
+
+function loadLocalState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){ console.error("Lecture stockage local impossible", e); }
+  return defaultState();
+}
+
+// saveState() reste l'unique point d'écriture utilisé partout dans l'app.
+// Selon le contexte, elle écrit sur Firestore (compte connecté) ou en local (mode démo).
+function saveState(){
+  if(fbDb && currentUser){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(()=>{
+      fbDb.collection("users").doc(currentUser.uid).set(state)
+        .catch(e=> console.error("Sauvegarde Firestore impossible", e));
+    }, 400); // on regroupe les écritures rapprochées
+  } else {
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    catch(e){ console.error("Sauvegarde locale impossible", e); }
+  }
+}
+
+let state = defaultState();
+
+/* ---------------- Démarrage : config Firebase → auth → chargement des données ---------------- */
+function boot(){
+  let config = null;
+  try{ config = JSON.parse(localStorage.getItem(FB_CONFIG_KEY) || "null"); }catch(e){}
+
+  if(!config){
+    document.getElementById("screen-fbconfig").classList.remove("hidden");
+    return;
+  }
+  initFirebase(config);
+}
+
+function initFirebase(config){
+  try{
+    fbApp = firebase.initializeApp(config);
+    fbAuth = firebase.auth();
+    fbDb = firebase.firestore();
+    // Cache local des données + file d'attente des écritures : l'app reste
+    // utilisable hors ligne, et tout se resynchronise seul au retour du réseau.
+    fbDb.enablePersistence({ synchronizeTabs: true }).catch(e=>{
+      console.warn("Persistance hors ligne non disponible :", e.code);
+    });
+  }catch(e){
+    console.error("Config Firebase invalide", e);
+    localStorage.removeItem(FB_CONFIG_KEY);
+    document.getElementById("fbconfig-error").textContent = "Configuration invalide : " + e.message;
+    document.getElementById("screen-fbconfig").classList.remove("hidden");
+    return;
+  }
+
+  fbAuth.onAuthStateChanged(user=>{
+    if(user){
+      currentUser = user;
+      document.getElementById("screen-auth").classList.add("hidden");
+      fbDb.collection("users").doc(user.uid).get().then(doc=>{
+        state = Object.assign(defaultState(), doc.exists ? doc.data() : {});
+        if(!doc.exists) saveState();
+        showApp();
+      }).catch(e=>{
+        console.error("Chargement Firestore impossible", e);
+        state = defaultState();
+        showApp();
+      });
+    } else {
+      currentUser = null;
+      document.getElementById("app-shell").classList.add("hidden");
+      document.getElementById("screen-auth").classList.remove("hidden");
+    }
+  });
+}
+
+function showApp(){
+  document.getElementById("app-shell").classList.remove("hidden");
+  renderCurrentScreen();
+  checkWeeklyRecap();
+  checkMonthlyRecap();
+}
+
+/* ---------------- Écran de configuration Firebase ---------------- */
+document.getElementById("btn-save-fbconfig").addEventListener("click", ()=>{
+  const raw = document.getElementById("fb-config-input").value.trim();
+  let parsed;
+  try{ parsed = JSON.parse(raw); }
+  catch(e){
+    document.getElementById("fbconfig-error").textContent = "Ce n'est pas un JSON valide. Copie l'objet de configuration exactement comme affiché dans la console Firebase.";
+    return;
+  }
+  if(!parsed.apiKey || !parsed.projectId){
+    document.getElementById("fbconfig-error").textContent = "La configuration doit contenir au moins apiKey et projectId.";
+    return;
+  }
+  localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(parsed));
+  document.getElementById("screen-fbconfig").classList.add("hidden");
+  initFirebase(parsed);
+});
+
+/* ---------------- Écran de connexion / inscription ---------------- */
+document.getElementById("btn-auth-login").addEventListener("click", ()=>{
+  const email = document.getElementById("auth-email").value.trim();
+  const pw = document.getElementById("auth-password").value;
+  document.getElementById("auth-error").textContent = "";
+  fbAuth.signInWithEmailAndPassword(email, pw)
+    .catch(e=> document.getElementById("auth-error").textContent = traduireErreurAuth(e));
+});
+
+document.getElementById("btn-auth-signup").addEventListener("click", ()=>{
+  const email = document.getElementById("auth-email").value.trim();
+  const pw = document.getElementById("auth-password").value;
+  document.getElementById("auth-error").textContent = "";
+  fbAuth.createUserWithEmailAndPassword(email, pw)
+    .catch(e=> document.getElementById("auth-error").textContent = traduireErreurAuth(e));
+});
+
+document.getElementById("btn-logout").addEventListener("click", ()=>{
+  if(confirm("Se déconnecter ?")) fbAuth.signOut();
+});
+
+function traduireErreurAuth(e){
+  const map = {
+    "auth/invalid-email": "Adresse email invalide.",
+    "auth/user-not-found": "Aucun compte avec cet email.",
+    "auth/wrong-password": "Mot de passe incorrect.",
+    "auth/email-already-in-use": "Un compte existe déjà avec cet email.",
+    "auth/weak-password": "Mot de passe trop court (6 caractères minimum).",
+    "auth/invalid-credential": "Email ou mot de passe incorrect."
+  };
+  return map[e.code] || ("Erreur : " + e.message);
+}
+
+/* ================= NOTIFICATIONS LOCALES =================
+   Important : sans infrastructure serveur (Firebase Cloud Messaging + Cloud
+   Functions, qui demandent le plan payant Blaze), ces notifications ne
+   peuvent se déclencher que lorsque l'app est ouverte. Le récap hebdo/mensuel
+   est donc envoyé au premier lancement de l'app CE JOUR-LÀ (ou après), pas
+   exactement "samedi à telle heure" si le téléphone est resté fermé. Les
+   notifications de palier, elles, sont fiables car déclenchées par tes
+   propres actions (ajout d'une dépense). */
+
+function notifPermission(){ return ("Notification" in window) ? Notification.permission : "unsupported"; }
+
+async function requestNotifPermission(){
+  if(!("Notification" in window)){ alert("Les notifications ne sont pas prises en charge sur ce navigateur."); return; }
+  const res = await Notification.requestPermission();
+  renderAdmin();
+}
+
+async function showLocalNotification(title, body){
+  if(notifPermission()!=="granted") return;
+  try{
+    const reg = await navigator.serviceWorker.getRegistration();
+    if(reg) reg.showNotification(title, { body, icon: "icon-192.png", badge: "icon-192.png" });
+    else new Notification(title, { body });
+  }catch(e){ console.warn("Notification impossible", e); }
+}
+
+function checkThresholdNotification(realPct, ym){
+  if(notifPermission()!=="granted") return;
+  if(state.notifState.thresholdMonth !== ym){
+    state.notifState.thresholdMonth = ym;
+    state.notifState.thresholdLevel = 0;
+  }
+  const paliers = [[100,"100%"],[75,"3/4"],[50,"la moitié"]];
+  for(const [seuil,label] of paliers){
+    if(realPct>=seuil && state.notifState.thresholdLevel<seuil){
+      state.notifState.thresholdLevel = seuil;
+      showLocalNotification("Volako — Budget du mois", `Tu as dépensé ${label} de ton budget de ce mois.`);
+      saveState();
+      break;
+    }
+  }
+}
+
+function isoWeekId(d){
+  const onejan = new Date(d.getFullYear(),0,1);
+  const week = Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);
+  return `${d.getFullYear()}-S${week}`;
+}
+
+function checkWeeklyRecap(){
+  if(notifPermission()!=="granted") return;
+  const now = new Date();
+  if(now.getDay()!==6) return; // samedi uniquement
+  const wk = isoWeekId(now);
+  if(state.notifState.lastWeeklyRecap===wk) return;
+
+  const sevenDaysAgo = addDays(todayISO(), -7);
+  const total = state.transactions
+    .filter(t=>t.type==="expense" && t.date>=sevenDaysAgo && t.date<=todayISO())
+    .reduce((s,t)=>s+t.amount,0);
+
+  state.notifState.lastWeeklyRecap = wk;
+  saveState();
+  showLocalNotification("Volako — Récap de la semaine", `Tu as dépensé ${fmtAr(total)} ces 7 derniers jours.`);
+}
+
+function checkMonthlyRecap(){
+  if(notifPermission()!=="granted") return;
+  const now = new Date();
+  const ym = currentYearMonth();
+  if(state.notifState.lastMonthlyRecap===ym) return;
+  if(now.getDate()!==1) return; // uniquement en début de mois
+
+  const prevDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const prevYm = prevDate.toISOString().slice(0,7);
+  const m = computeMonthlyTotals(prevYm, false);
+
+  state.notifState.lastMonthlyRecap = ym;
+  saveState();
+  showLocalNotification("Volako — Récap du mois", `Mois précédent : ${fmtAr(m.depenses)} dépensés pour ${fmtAr(m.entrees)} reçus.`);
+}
+
+/* ---------------- PWA : service worker + indicateur hors ligne ---------------- */
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("./service-worker.js").catch(e=>{
+      console.warn("Service worker non enregistré (normal si testé hors GitHub Pages) :", e);
+    });
+  });
+}
+
+function updateOfflineBadge(){
+  document.getElementById("offline-badge").classList.toggle("hidden", navigator.onLine);
+}
+window.addEventListener("online", updateOfflineBadge);
+window.addEventListener("offline", updateOfflineBadge);
+updateOfflineBadge();
+
+boot();
+
+let currentScreen = "accueil";
+let balanceMode = "global"; // global | salaire
+let chartCatHome, chartCatFull, chartEvolution;
+
+/* ================= UTILITAIRES ================= */
+function fmtAr(n){
+  return Math.round(n).toLocaleString("fr-FR").replace(/,/g," ") + " Ar";
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function addDays(dateStr, n){
+  const d = new Date(dateStr+"T00:00:00");
+  d.setDate(d.getDate()+n);
+  return d.toISOString().slice(0,10);
+}
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+function computeTotals(){
+  let salaireIn=0, autreIn=0, depenses=0;
+  state.transactions.forEach(t=>{
+    if(t.type==="income"){
+      if(t.source==="salaire") salaireIn += t.amount;
+      else autreIn += t.amount;
+    } else {
+      depenses += t.amount;
+    }
+  });
+  return {
+    salaireIn, autreIn, depenses,
+    soldeGlobal: salaireIn+autreIn-depenses,
+    soldeSalaire: salaireIn-depenses
+  };
+}
+
+function computeMonthlyTotals(yearMonth, excludeAutreIncome){
+  let salaireIn=0, autreIn=0, depenses=0;
+  state.transactions.forEach(t=>{
+    if(!t.date || !t.date.startsWith(yearMonth)) return;
+    if(t.type==="income"){
+      if(t.source==="salaire") salaireIn += t.amount;
+      else if(!excludeAutreIncome) autreIn += t.amount;
+    } else {
+      depenses += t.amount;
+    }
+  });
+  return { salaireIn, autreIn, depenses, entrees: salaireIn+autreIn };
+}
+
+/* ================= NAVIGATION ================= */
+document.querySelectorAll(".nav-item").forEach(btn=>{
+  btn.addEventListener("click", ()=> showScreen(btn.dataset.screen));
+});
+document.getElementById("btn-see-all").addEventListener("click", ()=> showScreen("depenses"));
+
+function showScreen(name){
+  currentScreen = name;
+  document.querySelectorAll(".screen").forEach(s=>s.classList.add("hidden"));
+  document.getElementById(`screen-${name}`).classList.remove("hidden");
+  document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active", b.dataset.screen===name));
+  renderCurrentScreen();
+}
+
+function renderCurrentScreen(){
+  if(currentScreen==="accueil") renderAccueil();
+  if(currentScreen==="depenses") renderDepenses();
+  if(currentScreen==="missions") renderMissions();
+  if(currentScreen==="graphiques") renderGraphiques();
+  if(currentScreen==="epargne") renderEpargne();
+  if(currentScreen==="admin") renderAdmin();
+}
+
+/* ================= ACCUEIL ================= */
+document.getElementById("toggle-global").addEventListener("click", ()=>{ balanceMode="global"; renderAccueil(); });
+document.getElementById("toggle-salaire").addEventListener("click", ()=>{ balanceMode="salaire"; renderAccueil(); });
+
+function renderAccueil(){
+  const t = computeTotals();
+  document.getElementById("toggle-global").classList.toggle("active", balanceMode==="global");
+  document.getElementById("toggle-salaire").classList.toggle("active", balanceMode==="salaire");
+
+  const solde = balanceMode==="global" ? t.soldeGlobal : t.soldeSalaire;
+  const inAmount = balanceMode==="global" ? (t.salaireIn+t.autreIn) : t.salaireIn;
+  const sub = balanceMode==="global"
+    ? "Toutes rentrées confondues, dépenses déduites"
+    : "Salaire uniquement, dépenses déduites (hors autres rentrées)";
+
+  const amtEl = document.getElementById("balance-amount");
+  amtEl.textContent = fmtAr(solde);
+  amtEl.classList.toggle("negative", solde<0);
+  document.getElementById("balance-sub").textContent = sub;
+  document.getElementById("stat-in").textContent = fmtAr(inAmount);
+  document.getElementById("stat-out").textContent = fmtAr(t.depenses);
+
+  // dernières opérations (filtrées selon le mode)
+  const txs = visibleTx().slice().sort((a,b)=> b.date.localeCompare(a.date)).slice(0,6);
+  renderTxList(document.getElementById("recent-list"), txs);
+
+  renderCategoryChart("chart-cat-home", visibleTx().filter(t=>t.type==="expense" && t.category!=="Épargne"));
+
+  updateBudgetGauge();
+}
+
+function currentYearMonth(){ return todayISO().slice(0,7); }
+
+function updateBudgetGauge(){
+  const ym = currentYearMonth();
+  const m = computeMonthlyTotals(ym, balanceMode==="salaire");
+  const base = balanceMode==="global" ? m.entrees : m.salaireIn;
+  const pct = base>0 ? Math.min(100, Math.round((m.depenses/base)*100)) : 0;
+  const realPct = base>0 ? (m.depenses/base)*100 : 0;
+
+  document.getElementById("gauge-pct").textContent = pct + "%";
+  const bar = document.getElementById("gauge-bar");
+  bar.style.width = pct + "%";
+  bar.style.background = realPct>=75 ? "var(--coral)" : (realPct>=50 ? "var(--savaneOrange, #e0954a)" : "var(--emerald)");
+
+  checkThresholdNotification(realPct, ym);
+}
+
+function visibleTx(){
+  if(balanceMode==="global") return state.transactions;
+  return state.transactions.filter(t => !(t.type==="income" && t.source==="autre"));
+}
+
+function renderTxList(container, txs){
+  if(txs.length===0){ container.innerHTML = `<div class="empty">Aucune opération pour l'instant.</div>`; return; }
+  container.innerHTML = txs.map(t=>{
+    const icon = t.type==="income" ? "💰" : categoryIcon(t.category);
+    const title = t.type==="income" ? incomeLabel(t) : t.category;
+    const dateLabel = (t.type==="expense" && t.duration>1) ? `${t.date} → ${addDays(t.date, t.duration-1)} (${t.duration}j)` : t.date;
+    const sub = `${dateLabel}${t.motif ? " · "+t.motif : ""}`;
+    const sign = t.type==="income" ? "+" : "−";
+    const clickable = true;
+    return `<div class="tx-item" ${clickable ? `style="cursor:pointer;" data-edit-id="${t.id}"` : ""}>
+      <div class="tx-icon">${icon}</div>
+      <div class="tx-main"><div class="t1">${title}</div><div class="t2">${sub}</div></div>
+      <div class="tx-amount ${t.type}">${sign} ${fmtAr(t.amount)}</div>
+    </div>`;
+  }).join("");
+  container.querySelectorAll("[data-edit-id]").forEach(el=>{
+    el.addEventListener("click", ()=> openEditTx(el.dataset.editId));
+  });
+}
+
+function categoryIcon(cat){
+  const map = {"Nourriture":"🍚","Transport":"🚌","Habillement":"👕","Plaisir":"🎉","Autre":"🧾","Épargne":"🐷"};
+  return map[cat] || "🧾";
+}
+function incomeLabel(t){
+  if(t.source==="salaire") return "Salaire";
+  const map = {cadeau:"Cadeau", remboursement:"Remboursement", indemnite_mission:"Indemnité de mission", autre:"Autre rentrée"};
+  return map[t.incomeSubtype] || "Autre rentrée";
+}
+
+/* ================= DÉTAIL DES OPÉRATIONS ================= */
+let listFilter = "all";
+document.querySelectorAll("#filter-type button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    document.querySelectorAll("#filter-type button").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    listFilter = b.dataset.f;
+    renderDepenses();
+  });
+});
+
+function renderDepenses(){
+  let txs = state.transactions.slice().sort((a,b)=> b.date.localeCompare(a.date));
+  if(listFilter!=="all") txs = txs.filter(t=>t.type===listFilter);
+  renderTxList(document.getElementById("full-list"), txs);
+}
+
+/* ================= MISSIONS ================= */
+document.getElementById("btn-new-mission").addEventListener("click", ()=>{
+  document.getElementById("mis-start").value = todayISO();
+  openModal("modal-mission");
+});
+
+function renderMissions(){
+  const container = document.getElementById("mission-list");
+  if(state.missions.length===0){
+    container.innerHTML = `<div class="card empty">Aucune mission pour l'instant.</div>`;
+    return;
+  }
+  container.innerHTML = state.missions.slice().reverse().map(m=>{
+    const spent = missionExpenses(m.id).reduce((s,t)=>s+t.amount,0);
+    let ecartHTML = "";
+    if(m.status==="terminee"){
+      const ecart = (m.indemnite||0) - spent;
+      ecartHTML = `<div class="mission-ecart ${ecart>=0?'pos':'neg'}">
+        ${ecart>=0 ? "Indemnité suffisante, excédent de "+fmtAr(ecart) : "Dépassement de "+fmtAr(Math.abs(ecart))}
+      </div>`;
+    }
+    return `<div class="card mission-card" data-id="${m.id}">
+      <span class="status ${m.status}">${m.status==="en_cours" ? "En cours" : "Terminée"}</span>
+      <h3>${m.name}</h3>
+      <div class="t2" style="color:var(--cream-dim);font-size:12.5px;">Depuis le ${m.startDate}</div>
+      <div class="stat-row">
+        <div class="stat"><div class="v">${fmtAr(spent)}</div><div class="l">Dépenses</div></div>
+        <div class="stat"><div class="v">${m.indemnite!=null ? fmtAr(m.indemnite) : "—"}</div><div class="l">Indemnité</div></div>
+      </div>
+      ${ecartHTML}
+    </div>`;
+  }).join("");
+  container.querySelectorAll(".mission-card").forEach(el=>{
+    el.addEventListener("click", ()=> openMissionDetail(el.dataset.id));
+  });
+}
+
+function missionExpenses(missionId){
+  return state.transactions.filter(t=>t.type==="expense" && t.missionId===missionId);
+}
+
+function openMissionDetail(missionId){
+  const m = state.missions.find(x=>x.id===missionId);
+  if(!m) return;
+  document.getElementById("mdd-title").textContent = m.name;
+  const txs = missionExpenses(missionId);
+  const spent = txs.reduce((s,t)=>s+t.amount,0);
+
+  let summaryHTML = `<div class="stat-row">
+    <div class="stat"><div class="v">${fmtAr(spent)}</div><div class="l">Dépenses</div></div>
+    <div class="stat"><div class="v">${m.indemnite!=null ? fmtAr(m.indemnite) : "—"}</div><div class="l">Indemnité</div></div>
+  </div>`;
+  if(m.status==="terminee"){
+    const ecart = (m.indemnite||0)-spent;
+    summaryHTML += `<div class="mission-ecart ${ecart>=0?'pos':'neg'}" style="margin-top:10px;">
+      ${ecart>=0 ? "Indemnité suffisante, excédent de "+fmtAr(ecart) : "Dépassement de "+fmtAr(Math.abs(ecart))}
+    </div>`;
+  }
+  document.getElementById("mdd-summary").innerHTML = summaryHTML;
+  renderTxList(document.getElementById("mdd-expenses"), txs.sort((a,b)=>b.date.localeCompare(a.date)));
+
+  const closeForm = document.getElementById("mdd-close-form");
+  if(m.status==="en_cours"){
+    closeForm.classList.remove("hidden");
+    document.getElementById("mdd-indemnite").value = "";
+    document.getElementById("btn-close-mission").onclick = ()=>{
+      const val = parseFloat(document.getElementById("mdd-indemnite").value);
+      if(isNaN(val) || val<0){ alert("Indique un montant d'indemnité valide."); return; }
+      m.indemnite = val;
+      m.status = "terminee";
+      // ajoute l'indemnité comme une rentrée d'argent "indemnité de mission"
+      state.transactions.push({
+        id: uid(), type:"income", source:"autre", incomeSubtype:"indemnite_mission",
+        amount: val, date: todayISO(), motif: `Indemnité — ${m.name}`, missionId: m.id
+      });
+      saveState();
+      closeModal("modal-mission-detail");
+      renderMissions();
+      renderAccueil();
+    };
+  } else {
+    closeForm.classList.add("hidden");
+  }
+  openModal("modal-mission-detail");
+}
+
+/* ================= ÉPARGNE ================= */
+let chartSavings;
+let savingsAction = "deposit"; // "deposit" | "spend"
+
+function ensureSavingsCategory(){
+  if(!state.categories.includes("Épargne")) state.categories.push("Épargne");
+}
+
+function renderEpargne(){
+  document.getElementById("savings-balance").textContent = fmtAr(state.savings.balance);
+
+  const log = state.savings.log.slice().sort((a,b)=> b.date.localeCompare(a.date));
+  const container = document.getElementById("savings-log");
+  if(log.length===0){
+    container.innerHTML = `<div class="empty">Aucun mouvement pour l'instant.</div>`;
+  } else {
+    container.innerHTML = log.map(l=>{
+      const sign = l.type==="depot" ? "+" : "−";
+      const cls = l.type==="depot" ? "income" : "expense";
+      const title = l.type==="depot" ? "Dépôt" : "Dépense (épargne)";
+      return `<div class="tx-item">
+        <div class="tx-icon">🐷</div>
+        <div class="tx-main"><div class="t1">${title}</div><div class="t2">${l.date}${l.motif ? " · "+l.motif : ""}</div></div>
+        <div class="tx-amount ${cls}">${sign} ${fmtAr(l.amount)}</div>
+      </div>`;
+    }).join("");
+  }
+
+  // graphique d'évolution du solde épargne au fil des mouvements
+  const chrono = state.savings.log.slice().sort((a,b)=> a.date.localeCompare(b.date));
+  let running = 0;
+  const labels = [], data = [];
+  chrono.forEach(l=>{
+    running += (l.type==="depot" ? l.amount : -l.amount);
+    labels.push(l.date);
+    data.push(running);
+  });
+  const ctx = document.getElementById("chart-savings");
+  if(chartSavings) chartSavings.destroy();
+  chartSavings = new Chart(ctx, {
+    type:"line",
+    data:{ labels, datasets:[{ label:"Solde épargne", data, borderColor:"#e8c784",
+      backgroundColor:"rgba(232,199,132,.15)", tension:.3, fill:true, pointRadius:3 }] },
+    options:{
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{color:"#b9c7bf", maxRotation:0}, grid:{color:"#2f4a3f"}},
+        y:{ticks:{color:"#b9c7bf"}, grid:{color:"#2f4a3f"}}
+      }
+    }
+  });
+}
+
+document.getElementById("btn-savings-deposit").addEventListener("click", ()=>{
+  savingsAction = "deposit";
+  document.getElementById("savings-modal-title").textContent = "Déposer dans l'épargne";
+  document.getElementById("savings-date").value = todayISO();
+  document.getElementById("savings-amount").value = "";
+  document.getElementById("savings-motif").value = "";
+  openModal("modal-savings");
+});
+document.getElementById("btn-savings-spend").addEventListener("click", ()=>{
+  savingsAction = "spend";
+  document.getElementById("savings-modal-title").textContent = "Dépenser depuis l'épargne";
+  document.getElementById("savings-date").value = todayISO();
+  document.getElementById("savings-amount").value = "";
+  document.getElementById("savings-motif").value = "";
+  openModal("modal-savings");
+});
+document.getElementById("close-modal-savings").addEventListener("click", ()=> closeModal("modal-savings"));
+
+document.getElementById("btn-save-savings").addEventListener("click", ()=>{
+  const amount = parseFloat(document.getElementById("savings-amount").value);
+  const date = document.getElementById("savings-date").value || todayISO();
+  const motif = document.getElementById("savings-motif").value.trim();
+  if(isNaN(amount) || amount<=0){ alert("Indique un montant valide."); return; }
+
+  if(savingsAction==="deposit"){
+    // le dépôt sort du budget courant : on l'enregistre comme une dépense
+    // catégorisée "Épargne", qui alimente le solde de l'épargne à part.
+    ensureSavingsCategory();
+    state.transactions.push({ id:uid(), type:"expense", amount, category:"Épargne", date, motif, missionId:null, duration:1 });
+    state.savings.balance += amount;
+    state.savings.log.push({ id:uid(), type:"depot", amount, date, motif });
+  } else {
+    if(amount > state.savings.balance && !confirm("Le montant dépasse le solde épargne actuel. Continuer quand même ?")) return;
+    state.savings.balance -= amount;
+    state.savings.log.push({ id:uid(), type:"depense", amount, date, motif });
+  }
+
+  saveState();
+  closeModal("modal-savings");
+  renderEpargne();
+});
+
+/* ================= GRAPHIQUES ================= */
+let currentPeriod = "day";
+document.querySelectorAll("#period-seg button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    document.querySelectorAll("#period-seg button").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    currentPeriod = b.dataset.p;
+    renderGraphiques();
+  });
+});
+
+function renderGraphiques(){
+  renderCategoryChart("chart-cat-full", visibleTx().filter(t=>t.type==="expense" && t.category!=="Épargne"));
+  renderEvolutionChart();
+}
+
+function periodKey(dateStr, period){
+  const d = new Date(dateStr+"T00:00:00");
+  if(period==="day") return dateStr;
+  if(period==="month") return dateStr.slice(0,7);
+  // semaine : année-numéro de semaine ISO approximatif
+  const onejan = new Date(d.getFullYear(),0,1);
+  const week = Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);
+  return `${d.getFullYear()}-S${week}`;
+}
+
+function renderEvolutionChart(){
+  const expenses = visibleTx().filter(t=>t.type==="expense" && t.category!=="Épargne").sort((a,b)=>a.date.localeCompare(b.date));
+  const grouped = {};
+  expenses.forEach(t=>{
+    const duration = t.duration || 1;
+    const dailyAmount = t.amount / duration;
+    for(let i=0;i<duration;i++){
+      const day = addDays(t.date, i);
+      const k = periodKey(day, currentPeriod);
+      grouped[k] = (grouped[k]||0) + dailyAmount;
+    }
+  });
+  const labels = Object.keys(grouped).sort();
+  const data = labels.map(l=>grouped[l]);
+
+  const ctx = document.getElementById("chart-evolution");
+  if(chartEvolution) chartEvolution.destroy();
+  chartEvolution = new Chart(ctx, {
+    type:"line",
+    data:{ labels, datasets:[{ label:"Dépenses", data, borderColor:"#d4af6a", backgroundColor:"rgba(212,175,106,.15)",
+      tension:.3, fill:true, pointRadius:3 }] },
+    options:{
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{color:"#b9c7bf", maxRotation:0}, grid:{color:"#2f4a3f"}},
+        y:{ticks:{color:"#b9c7bf"}, grid:{color:"#2f4a3f"}}
+      }
+    }
+  });
+}
+
+function renderCategoryChart(canvasId, expenseTxs){
+  const grouped = {};
+  expenseTxs.forEach(t=>{ grouped[t.category] = (grouped[t.category]||0) + t.amount; });
+  const labels = Object.keys(grouped);
+  const data = labels.map(l=>grouped[l]);
+  const palette = ["#d4af6a","#4caf7d","#6aa8d4","#d9695a","#b48ed1","#e8c784","#7fc8b8"];
+
+  const ctx = document.getElementById(canvasId);
+  const existing = canvasId==="chart-cat-home" ? chartCatHome : chartCatFull;
+  if(existing) existing.destroy();
+
+  const chart = new Chart(ctx, {
+    type:"doughnut",
+    data:{ labels, datasets:[{ data, backgroundColor: labels.map((_,i)=>palette[i%palette.length]) }] },
+    options:{
+      plugins:{ legend:{ position:"bottom", labels:{color:"#f1ede1", font:{size:11}} } },
+      cutout:"62%"
+    }
+  });
+
+  if(canvasId==="chart-cat-home") chartCatHome = chart; else chartCatFull = chart;
+  if(labels.length===0){
+    ctx.getContext("2d").clearRect(0,0,ctx.width,ctx.height);
+  }
+}
+
+/* ================= ADMIN CATÉGORIES ================= */
+document.getElementById("btn-add-cat").addEventListener("click", ()=>{
+  const input = document.getElementById("new-cat-input");
+  const val = input.value.trim();
+  if(!val) return;
+  if(state.categories.includes(val)){ alert("Cette catégorie existe déjà."); return; }
+  state.categories.push(val);
+  saveState();
+  input.value = "";
+  renderAdmin();
+});
+
+document.getElementById("btn-enable-notif").addEventListener("click", requestNotifPermission);
+
+function renderAdmin(){
+  const container = document.getElementById("cat-list");
+  container.innerHTML = state.categories.map(c=>`
+    <div class="cat-item">
+      <span>${categoryIcon(c)} ${c}</span>
+      ${c==="Épargne" ? `<span style="font-size:11px;color:var(--cream-dim);">catégorie système</span>` : `<button class="btn small danger" data-cat="${c}">Supprimer</button>`}
+    </div>
+  `).join("");
+
+  const statusEl = document.getElementById("notif-status");
+  const perm = notifPermission();
+  const btnNotif = document.getElementById("btn-enable-notif");
+  if(perm==="granted"){ statusEl.textContent = "Notifications activées ✅"; btnNotif.classList.add("hidden"); }
+  else if(perm==="denied"){ statusEl.textContent = "Notifications bloquées — réactive-les dans les réglages de ton navigateur/téléphone."; btnNotif.classList.add("hidden"); }
+  else { statusEl.textContent = "Notifications désactivées."; btnNotif.classList.remove("hidden"); }
+
+  container.querySelectorAll("button[data-cat]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const cat = btn.dataset.cat;
+      const used = state.transactions.some(t=>t.type==="expense" && t.category===cat);
+      if(used && !confirm(`Des dépenses existantes utilisent "${cat}". Supprimer quand même la catégorie ?`)) return;
+      state.categories = state.categories.filter(c=>c!==cat);
+      saveState();
+      renderAdmin();
+    });
+  });
+}
+
+/* ================= MODALE : AJOUTER / MODIFIER OPÉRATION ================= */
+function openModal(id){ document.getElementById(id).classList.remove("hidden"); }
+function closeModal(id){ document.getElementById(id).classList.add("hidden"); }
+
+let editingTxId = null;
+
+document.getElementById("btn-add-fab").addEventListener("click", ()=>{
+  editingTxId = null;
+  document.getElementById("modal-add-title").textContent = "Nouvelle opération";
+  document.getElementById("add-type-seg").classList.remove("hidden");
+  document.getElementById("btn-delete-tx").classList.add("hidden");
+  clearAddForm();
+  document.getElementById("exp-date").value = todayISO();
+  document.getElementById("inc-date").value = todayISO();
+  populateMissionSelects();
+  // revenir par défaut sur "Dépense"
+  document.querySelectorAll("#add-type-seg button").forEach(x=>x.classList.remove("active"));
+  document.querySelector('#add-type-seg button[data-t="expense"]').classList.add("active");
+  addType = "expense";
+  document.getElementById("expense-fields").classList.remove("hidden");
+  document.getElementById("income-fields").classList.add("hidden");
+  openModal("modal-add");
+});
+
+function openEditTx(id){
+  const t = state.transactions.find(x=>x.id===id);
+  if(!t) return;
+  editingTxId = id;
+  populateMissionSelects();
+  document.getElementById("add-type-seg").classList.add("hidden"); // on ne change pas le type en édition
+  addType = t.type;
+
+  if(t.type==="expense"){
+    document.getElementById("modal-add-title").textContent = "Modifier la dépense";
+    document.getElementById("expense-fields").classList.remove("hidden");
+    document.getElementById("income-fields").classList.add("hidden");
+
+    document.getElementById("exp-amount").value = t.amount;
+    document.getElementById("exp-date").value = t.date;
+    document.getElementById("exp-motif").value = t.motif || "";
+    document.getElementById("exp-mission").value = t.missionId || "";
+
+    const hasSpread = (t.duration||1) > 1;
+    document.getElementById("exp-spread").checked = hasSpread;
+    document.getElementById("exp-spread-wrap").classList.toggle("hidden", !hasSpread);
+    document.getElementById("exp-duration").value = hasSpread ? t.duration : 7;
+
+    document.querySelectorAll("#exp-cat-chips .chip").forEach(chip=>{
+      chip.classList.toggle("active", chip.dataset.cat===t.category);
+    });
+  } else {
+    document.getElementById("modal-add-title").textContent = "Modifier la rentrée d'argent";
+    document.getElementById("expense-fields").classList.add("hidden");
+    document.getElementById("income-fields").classList.remove("hidden");
+
+    document.getElementById("inc-amount").value = t.amount;
+    document.getElementById("inc-date").value = t.date;
+    document.getElementById("inc-motif").value = t.motif || "";
+
+    incomeSource = t.source;
+    document.querySelectorAll("#inc-source-seg button").forEach(b=>b.classList.toggle("active", b.dataset.s===t.source));
+    document.getElementById("inc-autre-type-wrap").classList.toggle("hidden", t.source!=="autre");
+    if(t.source==="autre"){
+      document.getElementById("inc-autre-type").value = t.incomeSubtype || "autre";
+      const isMission = t.incomeSubtype==="indemnite_mission";
+      document.getElementById("inc-mission-wrap").classList.toggle("hidden", !isMission);
+      if(isMission) document.getElementById("inc-mission").value = t.missionId || "";
+    }
+  }
+
+  document.getElementById("btn-delete-tx").classList.remove("hidden");
+  openModal("modal-add");
+}
+
+document.getElementById("btn-delete-tx").addEventListener("click", ()=>{
+  if(!editingTxId) return;
+  if(!confirm("Supprimer définitivement cette opération ?")) return;
+  state.transactions = state.transactions.filter(t=>t.id!==editingTxId);
+  saveState();
+  editingTxId = null;
+  closeModal("modal-add");
+  renderCurrentScreen();
+});
+document.getElementById("close-modal-add").addEventListener("click", ()=>{
+  editingTxId = null;
+  closeModal("modal-add");
+});
+document.getElementById("close-modal-mission").addEventListener("click", ()=> closeModal("modal-mission"));
+document.getElementById("close-modal-mission-detail").addEventListener("click", ()=> closeModal("modal-mission-detail"));
+
+let addType = "expense";
+document.querySelectorAll("#add-type-seg button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    document.querySelectorAll("#add-type-seg button").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    addType = b.dataset.t;
+    document.getElementById("expense-fields").classList.toggle("hidden", addType!=="expense");
+    document.getElementById("income-fields").classList.toggle("hidden", addType!=="income");
+  });
+});
+
+let incomeSource = "salaire";
+document.querySelectorAll("#inc-source-seg button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    document.querySelectorAll("#inc-source-seg button").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    incomeSource = b.dataset.s;
+    document.getElementById("inc-autre-type-wrap").classList.toggle("hidden", incomeSource!=="autre");
+  });
+});
+
+document.getElementById("exp-spread").addEventListener("change", (e)=>{
+  document.getElementById("exp-spread-wrap").classList.toggle("hidden", !e.target.checked);
+});
+
+document.getElementById("inc-autre-type").addEventListener("change", (e)=>{
+  document.getElementById("inc-mission-wrap").classList.toggle("hidden", e.target.value!=="indemnite_mission");
+});
+
+function populateMissionSelects(){
+  const enCours = state.missions.filter(m=>m.status==="en_cours");
+  const expSel = document.getElementById("exp-mission");
+  expSel.innerHTML = `<option value="">— Aucune —</option>` +
+    enCours.map(m=>`<option value="${m.id}">${m.name}</option>`).join("");
+  const incSel = document.getElementById("inc-mission");
+  incSel.innerHTML = enCours.map(m=>`<option value="${m.id}">${m.name}</option>`).join("");
+
+  const chipRow = document.getElementById("exp-cat-chips");
+  chipRow.innerHTML = state.categories.map((c,i)=>`<div class="chip ${i===0?'active':''}" data-cat="${c}">${c}</div>`).join("");
+  chipRow.querySelectorAll(".chip").forEach(chip=>{
+    chip.addEventListener("click", ()=>{
+      chipRow.querySelectorAll(".chip").forEach(x=>x.classList.remove("active"));
+      chip.classList.add("active");
+    });
+  });
+}
+
+document.getElementById("btn-save-tx").addEventListener("click", ()=>{
+  if(addType==="expense"){
+    const amount = parseFloat(document.getElementById("exp-amount").value);
+    const catChip = document.querySelector("#exp-cat-chips .chip.active");
+    const date = document.getElementById("exp-date").value;
+    const motif = document.getElementById("exp-motif").value.trim();
+    const missionId = document.getElementById("exp-mission").value || null;
+    if(isNaN(amount) || amount<=0){ alert("Indique un montant valide."); return; }
+    if(!catChip){ alert("Choisis une catégorie."); return; }
+    let duration = 1;
+    if(document.getElementById("exp-spread").checked){
+      duration = parseInt(document.getElementById("exp-duration").value, 10);
+      if(isNaN(duration) || duration<2){ alert("Indique un nombre de jours valide (2 ou plus)."); return; }
+    }
+    if(editingTxId){
+      const t = state.transactions.find(x=>x.id===editingTxId);
+      Object.assign(t, { amount, category:catChip.dataset.cat, date, motif, missionId, duration });
+    } else {
+      state.transactions.push({ id:uid(), type:"expense", amount, category:catChip.dataset.cat, date, motif, missionId, duration });
+    }
+  } else {
+    const amount = parseFloat(document.getElementById("inc-amount").value);
+    const date = document.getElementById("inc-date").value;
+    const motif = document.getElementById("inc-motif").value.trim();
+    if(isNaN(amount) || amount<=0){ alert("Indique un montant valide."); return; }
+    const base = { amount, date, motif, source: incomeSource };
+    if(incomeSource==="autre"){
+      base.incomeSubtype = document.getElementById("inc-autre-type").value;
+      if(base.incomeSubtype==="indemnite_mission"){
+        base.missionId = document.getElementById("inc-mission").value || null;
+      }
+    }
+    if(editingTxId){
+      const t = state.transactions.find(x=>x.id===editingTxId);
+      Object.assign(t, base);
+      // si cette rentrée est l'indemnité d'une mission, on resynchronise le montant sur la mission
+      if(t.incomeSubtype==="indemnite_mission" && t.missionId){
+        const m = state.missions.find(x=>x.id===t.missionId);
+        if(m) m.indemnite = amount;
+      }
+    } else {
+      state.transactions.push(Object.assign({ id:uid(), type:"income" }, base));
+    }
+  }
+  saveState();
+  closeModal("modal-add");
+  editingTxId = null;
+  clearAddForm();
+  renderCurrentScreen();
+});
+
+function clearAddForm(){
+  document.getElementById("exp-amount").value = "";
+  document.getElementById("exp-motif").value = "";
+  document.getElementById("inc-amount").value = "";
+  document.getElementById("inc-motif").value = "";
+  document.getElementById("exp-spread").checked = false;
+  document.getElementById("exp-spread-wrap").classList.add("hidden");
+  document.getElementById("exp-duration").value = 7;
+}
+
+/* ================= MODALE : NOUVELLE MISSION ================= */
+document.getElementById("btn-save-mission").addEventListener("click", ()=>{
+  const name = document.getElementById("mis-name").value.trim();
+  const start = document.getElementById("mis-start").value;
+  if(!name){ alert("Donne un nom à la mission."); return; }
+  state.missions.push({ id:uid(), name, startDate:start||todayISO(), status:"en_cours", indemnite:null });
+  saveState();
+  document.getElementById("mis-name").value = "";
+  closeModal("modal-mission");
+  renderMissions();
+});
+
+
+</script>
+</body>
+</html>
