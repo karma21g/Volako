@@ -168,6 +168,10 @@
     <input type="email" id="auth-email" placeholder="toi@exemple.com">
     <label>Mot de passe</label>
     <input type="password" id="auth-password" placeholder="••••••••">
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;">
+      <input type="checkbox" id="auth-stay-logged-in" style="width:auto;" checked> Rester connecté
+    </label>
+    <div style="font-size:11px;color:var(--cream-dim);margin-top:4px;">Si décoché, tu seras déconnecté automatiquement après 2h sans utiliser l'app.</div>
     <div class="auth-error" id="auth-error"></div>
     <button class="btn" id="btn-auth-login" style="margin-top:14px;">Se connecter</button>
     <button class="btn secondary" id="btn-auth-signup" style="margin-top:10px;">Créer un compte</button>
@@ -236,6 +240,27 @@
   <!-- ÉCRAN DÉPENSES / DÉTAIL -->
   <div id="screen-depenses" class="screen hidden">
     <h2 class="page-title">Détail des opérations</h2>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div class="section-title" style="margin:0;">Prévu vs réel</div>
+        <button class="btn small secondary" id="btn-edit-budget">Définir</button>
+      </div>
+      <div class="seg" id="forecast-period-seg">
+        <button data-p="day" class="active">Jour</button>
+        <button data-p="week">Semaine</button>
+        <button data-p="month">Mois</button>
+      </div>
+      <div id="forecast-empty" class="empty hidden">Définis un budget journalier prévisionnel pour voir la comparaison.</div>
+      <div id="forecast-content" class="hidden">
+        <div class="stat-row" style="margin-top:14px;">
+          <div class="stat"><div class="v" id="forecast-prevu">0 Ar</div><div class="l">Prévu</div></div>
+          <div class="stat"><div class="v" id="forecast-reel">0 Ar</div><div class="l">Réel</div></div>
+        </div>
+        <div id="forecast-ecart" style="margin-top:10px;font-size:13px;text-align:center;"></div>
+      </div>
+    </div>
+
     <div class="seg" id="filter-type">
       <button data-f="all" class="active">Toutes</button>
       <button data-f="expense">Dépenses</button>
@@ -459,6 +484,7 @@ function defaultState(){
     missions: [],
     savings: { balance: 0, log: [] },
     categoryIcons: {},
+    dailyBudget: null,
     notifState: { thresholdMonth: null, thresholdLevel: 0, lastWeeklyRecap: null, lastMonthlyRecap: null }
   };
 }
@@ -535,6 +561,7 @@ function initFirebase(config){
     } else {
       currentUser = null;
       dataLoaded = false;
+      stopInactivityWatch();
       document.getElementById("app-shell").classList.add("hidden");
       document.getElementById("screen-load-error").classList.add("hidden");
       document.getElementById("screen-auth").classList.remove("hidden");
@@ -565,6 +592,10 @@ function showApp(){
   renderCurrentScreen();
   checkWeeklyRecap();
   checkMonthlyRecap();
+
+  const stay = localStorage.getItem(STAY_LOGGED_IN_KEY);
+  if(stay==="0") startInactivityWatch();
+  else stopInactivityWatch();
 }
 
 /* ---------------- Écran de configuration Firebase ---------------- */
@@ -586,10 +617,18 @@ document.getElementById("btn-save-fbconfig").addEventListener("click", ()=>{
 });
 
 /* ---------------- Écran de connexion / inscription ---------------- */
+const STAY_LOGGED_IN_KEY = "volako_stay_logged_in";
+
+function rememberStayChoice(){
+  const stay = document.getElementById("auth-stay-logged-in").checked;
+  localStorage.setItem(STAY_LOGGED_IN_KEY, stay ? "1" : "0");
+}
+
 document.getElementById("btn-auth-login").addEventListener("click", ()=>{
   const email = document.getElementById("auth-email").value.trim();
   const pw = document.getElementById("auth-password").value;
   document.getElementById("auth-error").textContent = "";
+  rememberStayChoice();
   fbAuth.signInWithEmailAndPassword(email, pw)
     .catch(e=> document.getElementById("auth-error").textContent = traduireErreurAuth(e));
 });
@@ -598,9 +637,32 @@ document.getElementById("btn-auth-signup").addEventListener("click", ()=>{
   const email = document.getElementById("auth-email").value.trim();
   const pw = document.getElementById("auth-password").value;
   document.getElementById("auth-error").textContent = "";
+  rememberStayChoice();
   fbAuth.createUserWithEmailAndPassword(email, pw)
     .catch(e=> document.getElementById("auth-error").textContent = traduireErreurAuth(e));
 });
+
+/* ---------------- Déconnexion automatique après inactivité ---------------- */
+const INACTIVITY_LIMIT_MS = 2 * 60 * 60 * 1000; // 2h
+let inactivityTimer = null;
+
+function startInactivityWatch(){
+  stopInactivityWatch();
+  const reset = ()=>{
+    clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(()=>{
+      if(fbAuth) fbAuth.signOut();
+    }, INACTIVITY_LIMIT_MS);
+  };
+  ["click","touchstart","keydown","scroll"].forEach(ev=>
+    document.addEventListener(ev, reset, { passive:true })
+  );
+  reset();
+}
+
+function stopInactivityWatch(){
+  clearTimeout(inactivityTimer);
+}
 
 document.getElementById("btn-retry-load").addEventListener("click", ()=>{
   if(currentUser) loadUserData();
@@ -891,6 +953,71 @@ function renderDepenses(){
   let txs = state.transactions.slice().sort((a,b)=> b.date.localeCompare(a.date));
   if(listFilter!=="all") txs = txs.filter(t=>t.type===listFilter);
   renderTxList(document.getElementById("full-list"), txs);
+  renderForecast();
+}
+
+let forecastPeriod = "day";
+document.querySelectorAll("#forecast-period-seg button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    document.querySelectorAll("#forecast-period-seg button").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    forecastPeriod = b.dataset.p;
+    renderForecast();
+  });
+});
+
+document.getElementById("btn-edit-budget").addEventListener("click", ()=>{
+  const current = state.dailyBudget || "";
+  const val = prompt("Budget prévisionnel par jour (Ar) :", current);
+  if(val===null) return;
+  const n = parseFloat(val);
+  if(val.trim()!=="" && (isNaN(n) || n<=0)){ alert("Montant invalide."); return; }
+  state.dailyBudget = val.trim()==="" ? null : n;
+  saveState();
+  renderForecast();
+});
+
+function renderForecast(){
+  const empty = document.getElementById("forecast-empty");
+  const content = document.getElementById("forecast-content");
+  if(!state.dailyBudget){
+    empty.classList.remove("hidden");
+    content.classList.add("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+  content.classList.remove("hidden");
+
+  const now = new Date();
+  let daysElapsed, rangeStart;
+  if(forecastPeriod==="day"){
+    daysElapsed = 1;
+    rangeStart = todayISO();
+  } else if(forecastPeriod==="week"){
+    const isoDow = now.getDay()===0 ? 7 : now.getDay(); // lundi=1 ... dimanche=7
+    daysElapsed = isoDow;
+    rangeStart = addDays(todayISO(), -(isoDow-1));
+  } else {
+    daysElapsed = now.getDate();
+    rangeStart = currentYearMonth()+"-01";
+  }
+
+  const prevu = state.dailyBudget * daysElapsed;
+  const reel = state.transactions
+    .filter(t=>t.type==="expense" && t.category!=="Épargne" && t.date>=rangeStart && t.date<=todayISO())
+    .reduce((s,t)=>s+t.amount,0);
+  const ecart = reel - prevu;
+
+  document.getElementById("forecast-prevu").textContent = fmtAr(prevu);
+  document.getElementById("forecast-reel").textContent = fmtAr(reel);
+  const ecartEl = document.getElementById("forecast-ecart");
+  if(ecart<=0){
+    ecartEl.style.color = "var(--emerald)";
+    ecartEl.textContent = `✅ ${fmtAr(Math.abs(ecart))} de moins que prévu`;
+  } else {
+    ecartEl.style.color = "var(--coral)";
+    ecartEl.textContent = `⚠️ ${fmtAr(ecart)} de plus que prévu`;
+  }
 }
 
 /* ================= MISSIONS ================= */
