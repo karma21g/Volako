@@ -252,13 +252,16 @@
         <button data-p="month">Mois</button>
       </div>
       <div id="forecast-empty" class="empty hidden">Définis un budget journalier prévisionnel pour voir la comparaison.</div>
-      <div id="forecast-content" class="hidden">
+
+      <div id="forecast-summary" class="hidden">
         <div class="stat-row" style="margin-top:14px;">
           <div class="stat"><div class="v" id="forecast-prevu">0 Ar</div><div class="l">Prévu</div></div>
           <div class="stat"><div class="v" id="forecast-reel">0 Ar</div><div class="l">Réel</div></div>
         </div>
         <div id="forecast-ecart" style="margin-top:10px;font-size:13px;text-align:center;"></div>
       </div>
+
+      <div id="forecast-daylist" class="hidden" style="margin-top:12px;"></div>
     </div>
 
     <div class="seg" id="filter-type">
@@ -386,6 +389,10 @@
         <label>Sur combien de jours ?</label>
         <input type="number" id="exp-duration" min="2" value="7" placeholder="Ex: 7">
       </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+        <input type="checkbox" id="exp-fixed" style="width:auto;"> Dépense fixe mensuelle (loyer, électricité, eau...)
+      </label>
+      <div style="font-size:11px;color:var(--cream-dim);margin-top:4px;">Comptée dans ton solde, mais exclue du suivi "prévu vs réel" au quotidien.</div>
       <label>Motif</label>
       <input type="text" id="exp-motif" placeholder="Ex: Marché, taxi-be...">
       <label>Lier à une mission (optionnel)</label>
@@ -977,34 +984,53 @@ document.getElementById("btn-edit-budget").addEventListener("click", ()=>{
   renderForecast();
 });
 
+function daysInMonth(year, monthIndex){ return new Date(year, monthIndex+1, 0).getDate(); }
+
+// total réel d'un jour donné (YYYY-MM-DD), en excluant épargne et charges fixes
+function realSpendForDay(dateStr){
+  return state.transactions
+    .filter(t=>t.type==="expense" && !t.fixed && t.category!=="Épargne" && t.date===dateStr)
+    .reduce((s,t)=>s+t.amount,0);
+}
+
 function renderForecast(){
   const empty = document.getElementById("forecast-empty");
-  const content = document.getElementById("forecast-content");
+  const summary = document.getElementById("forecast-summary");
+  const daylist = document.getElementById("forecast-daylist");
   if(!state.dailyBudget){
     empty.classList.remove("hidden");
-    content.classList.add("hidden");
+    summary.classList.add("hidden");
+    daylist.classList.add("hidden");
     return;
   }
   empty.classList.add("hidden");
-  content.classList.remove("hidden");
 
-  const now = new Date();
-  let daysElapsed, rangeStart;
   if(forecastPeriod==="day"){
-    daysElapsed = 1;
-    rangeStart = todayISO();
-  } else if(forecastPeriod==="week"){
-    const isoDow = now.getDay()===0 ? 7 : now.getDay(); // lundi=1 ... dimanche=7
-    daysElapsed = isoDow;
-    rangeStart = addDays(todayISO(), -(isoDow-1));
-  } else {
-    daysElapsed = now.getDate();
-    rangeStart = currentYearMonth()+"-01";
+    summary.classList.add("hidden");
+    daylist.classList.remove("hidden");
+    renderForecastDayList();
+    return;
   }
 
-  const prevu = state.dailyBudget * daysElapsed;
+  daylist.classList.add("hidden");
+  summary.classList.remove("hidden");
+
+  const now = new Date();
+  let totalDays, rangeStart, rangeEnd;
+  if(forecastPeriod==="week"){
+    const isoDow = now.getDay()===0 ? 7 : now.getDay(); // lundi=1 ... dimanche=7
+    totalDays = 7;
+    rangeStart = addDays(todayISO(), -(isoDow-1));
+    rangeEnd = addDays(rangeStart, 6);
+  } else {
+    totalDays = daysInMonth(now.getFullYear(), now.getMonth());
+    rangeStart = currentYearMonth()+"-01";
+    rangeEnd = currentYearMonth()+"-"+String(totalDays).padStart(2,"0");
+  }
+
+  const prevu = state.dailyBudget * totalDays;
   const reel = state.transactions
-    .filter(t=>t.type==="expense" && t.category!=="Épargne" && t.date>=rangeStart && t.date<=todayISO())
+    .filter(t=>t.type==="expense" && !t.fixed && t.category!=="Épargne" && t.date>=rangeStart && t.date<=rangeEnd)
     .reduce((s,t)=>s+t.amount,0);
   const ecart = reel - prevu;
 
@@ -1018,6 +1044,29 @@ function renderForecast(){
     ecartEl.style.color = "var(--coral)";
     ecartEl.textContent = `⚠️ ${fmtAr(ecart)} de plus que prévu`;
   }
+}
+
+function renderForecastDayList(){
+  const container = document.getElementById("forecast-daylist");
+  const N = 14; // nombre de jours affichés
+  const rows = [];
+  for(let i=0;i<N;i++){
+    const d = addDays(todayISO(), -i);
+    const reel = realSpendForDay(d);
+    const ecart = reel - state.dailyBudget;
+    rows.push({ d, reel, ecart });
+  }
+  container.innerHTML = rows.map(r=>{
+    const color = r.ecart<=0 ? "var(--emerald)" : "var(--coral)";
+    const sign = r.ecart<=0 ? "−" : "+";
+    return `<div class="tx-item">
+      <div class="tx-main"><div class="t1">${r.d}</div></div>
+      <div style="text-align:right;">
+        <div style="font-size:13px;">${fmtAr(r.reel)} <span style="color:var(--cream-dim);font-size:11px;">/ ${fmtAr(state.dailyBudget)}</span></div>
+        <div style="font-size:11px;color:${color};">${sign} ${fmtAr(Math.abs(r.ecart))}</div>
+      </div>
+    </div>`;
+  }).join("");
 }
 
 /* ================= MISSIONS ================= */
@@ -1228,7 +1277,7 @@ function periodKey(dateStr, period){
 }
 
 function renderEvolutionChart(){
-  const expenses = visibleTx().filter(t=>t.type==="expense" && t.category!=="Épargne").sort((a,b)=>a.date.localeCompare(b.date));
+  const expenses = visibleTx().filter(t=>t.type==="expense" && t.category!=="Épargne" && (!t.fixed || currentPeriod==="month")).sort((a,b)=>a.date.localeCompare(b.date));
   const grouped = {};
   expenses.forEach(t=>{
     const duration = t.duration || 1;
@@ -1247,9 +1296,19 @@ function renderEvolutionChart(){
   chartEvolution = new Chart(ctx, {
     type:"line",
     data:{ labels, datasets:[{ label:"Dépenses", data, borderColor:"#d4af6a", backgroundColor:"rgba(212,175,106,.15)",
-      tension:.3, fill:true, pointRadius:3 }] },
+      tension:.3, fill:true, pointRadius:4, pointHitRadius:18, pointHoverRadius:6 }] },
     options:{
-      plugins:{legend:{display:false}},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          displayColors:false,
+          callbacks:{
+            title: (items)=> items[0].label,
+            label: (item)=> fmtAr(item.parsed.y)
+          }
+        }
+      },
+      interaction:{ mode:"nearest", intersect:false },
       scales:{
         x:{ticks:{color:"#b9c7bf", maxRotation:0}, grid:{color:"#2f4a3f"}},
         y:{ticks:{color:"#b9c7bf"}, grid:{color:"#2f4a3f"}}
@@ -1306,7 +1365,10 @@ function renderAdmin(){
   const container = document.getElementById("cat-list");
   container.innerHTML = state.categories.map(c=>`
     <div class="cat-item">
-      <span><span class="cat-icon-edit" data-icon-for="${c}" style="cursor:pointer;display:inline-block;width:22px;">${categoryIcon(c)}</span> ${c}</span>
+      <span>
+        <span class="cat-icon-edit" data-icon-for="${c}" style="cursor:pointer;display:inline-block;width:22px;">${categoryIcon(c)}</span>
+        <span class="cat-name-edit" data-name-for="${c}" style="${c==="Épargne" ? "" : "cursor:pointer;"}">${c}</span>
+      </span>
       ${c==="Épargne" ? `<span style="font-size:11px;color:var(--cream-dim);">catégorie système</span>` : `<button class="btn small danger" data-cat="${c}">Supprimer</button>`}
     </div>
   `).join("");
@@ -1320,6 +1382,23 @@ function renderAdmin(){
       const trimmed = val.trim();
       if(!trimmed) return;
       state.categoryIcons[cat] = trimmed;
+      saveState();
+      renderAdmin();
+    });
+  });
+
+  container.querySelectorAll("[data-name-for]").forEach(span=>{
+    const cat = span.dataset.nameFor;
+    if(cat==="Épargne") return; // catégorie système protégée
+    span.addEventListener("click", ()=>{
+      const val = prompt(`Nouveau nom pour "${cat}" :`, cat);
+      if(val===null) return;
+      const trimmed = val.trim();
+      if(!trimmed || trimmed===cat) return;
+      if(state.categories.includes(trimmed)){ alert("Une catégorie porte déjà ce nom."); return; }
+      state.categories = state.categories.map(x=> x===cat ? trimmed : x);
+      if(state.categoryIcons[cat]){ state.categoryIcons[trimmed] = state.categoryIcons[cat]; delete state.categoryIcons[cat]; }
+      state.transactions.forEach(t=>{ if(t.type==="expense" && t.category===cat) t.category = trimmed; });
       saveState();
       renderAdmin();
     });
@@ -1390,6 +1469,7 @@ function openEditTx(id){
     document.getElementById("exp-spread").checked = hasSpread;
     document.getElementById("exp-spread-wrap").classList.toggle("hidden", !hasSpread);
     document.getElementById("exp-duration").value = hasSpread ? t.duration : 7;
+    document.getElementById("exp-fixed").checked = !!t.fixed;
 
     document.querySelectorAll("#exp-cat-chips .chip").forEach(chip=>{
       chip.classList.toggle("active", chip.dataset.cat===t.category);
@@ -1497,9 +1577,10 @@ document.getElementById("btn-save-tx").addEventListener("click", ()=>{
     }
     if(editingTxId){
       const t = state.transactions.find(x=>x.id===editingTxId);
-      Object.assign(t, { amount, category:catChip.dataset.cat, date, motif, missionId, duration });
+      Object.assign(t, { amount, category:catChip.dataset.cat, date, motif, missionId, duration, fixed });
     } else {
-      state.transactions.push({ id:uid(), type:"expense", amount, category:catChip.dataset.cat, date, motif, missionId, duration });
+      const fixed = document.getElementById("exp-fixed").checked;
+    state.transactions.push({ id:uid(), type:"expense", amount, category:catChip.dataset.cat, date, motif, missionId, duration, fixed });
     }
   } else {
     const amount = parseFloat(document.getElementById("inc-amount").value);
@@ -1540,6 +1621,7 @@ function clearAddForm(){
   document.getElementById("exp-spread").checked = false;
   document.getElementById("exp-spread-wrap").classList.add("hidden");
   document.getElementById("exp-duration").value = 7;
+  document.getElementById("exp-fixed").checked = false;
 }
 
 /* ================= MODALE : NOUVELLE MISSION ================= */
