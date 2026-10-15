@@ -174,6 +174,17 @@
   </div>
 </div>
 
+<div id="screen-load-error" class="auth-wrap hidden">
+  <h1>Vola<span style="color:var(--gold-2)">ko</span></h1>
+  <div class="card" style="text-align:center;">
+    <div style="font-size:13px;color:var(--cream-dim);margin-bottom:14px;">
+      Impossible de charger tes données en ce moment. Par sécurité, l'app ne s'ouvre pas tant que
+      tes vraies données ne sont pas bien récupérées (ça évite d'écraser quoi que ce soit par erreur).
+    </div>
+    <button class="btn" id="btn-retry-load">Réessayer</button>
+  </div>
+</div>
+
 <div id="app-shell" class="hidden">
 <div class="wrap">
 
@@ -193,9 +204,9 @@
         <button id="toggle-salaire">Solde salaire</button>
       </div>
       <div class="balance-amount" id="balance-amount">0 Ar</div>
-      <div class="balance-sub" id="balance-sub">Toutes rentrées confondues, dépenses déduites</div>
+      <div class="balance-sub" id="balance-sub">Tous revenus confondus, dépenses déduites</div>
       <div class="stat-row">
-        <div class="stat"><div class="v" id="stat-in">0 Ar</div><div class="l">Entrées</div></div>
+        <div class="stat"><div class="v" id="stat-in">0 Ar</div><div class="l">Revenus</div></div>
         <div class="stat"><div class="v" id="stat-out">0 Ar</div><div class="l">Dépenses</div></div>
       </div>
       <div style="margin-top:16px;text-align:left;">
@@ -228,7 +239,7 @@
     <div class="seg" id="filter-type">
       <button data-f="all" class="active">Toutes</button>
       <button data-f="expense">Dépenses</button>
-      <button data-f="income">Entrées</button>
+      <button data-f="income">Revenus</button>
     </div>
     <div class="card" style="margin-top:14px;">
       <div id="full-list"></div>
@@ -289,9 +300,11 @@
     <div class="card">
       <label>Nouvelle catégorie</label>
       <div style="display:flex;gap:8px;">
+        <input id="new-cat-icon" placeholder="🙂" style="width:54px;text-align:center;flex:none;" maxlength="4">
         <input id="new-cat-input" placeholder="Ex: Santé">
         <button class="btn small" id="btn-add-cat" style="width:auto;">Ajouter</button>
       </div>
+      <div style="font-size:11px;color:var(--cream-dim);margin-top:6px;">L'icône est optionnelle — laisse vide pour une icône par défaut. Tape sur l'icône d'une catégorie existante pour la changer.</div>
     </div>
     <div class="card">
       <div id="cat-list"></div>
@@ -331,7 +344,7 @@
     <h2 id="modal-add-title">Nouvelle opération</h2>
     <div class="seg" id="add-type-seg">
       <button data-t="expense" class="active">Dépense</button>
-      <button data-t="income">Entrée d'argent</button>
+      <button data-t="income">Revenu</button>
     </div>
 
     <div id="expense-fields">
@@ -360,10 +373,10 @@
       <label>Source</label>
       <div class="seg" id="inc-source-seg">
         <button data-s="salaire" class="active">Salaire</button>
-        <button data-s="autre">Autre rentrée</button>
+        <button data-s="autre">Autre revenu</button>
       </div>
       <div id="inc-autre-type-wrap" class="hidden">
-        <label>Type de rentrée</label>
+        <label>Type de revenu</label>
         <select id="inc-autre-type">
           <option value="cadeau">Cadeau</option>
           <option value="remboursement">Remboursement</option>
@@ -445,6 +458,7 @@ function defaultState(){
     transactions: [],
     missions: [],
     savings: { balance: 0, log: [] },
+    categoryIcons: {},
     notifState: { thresholdMonth: null, thresholdLevel: 0, lastWeeklyRecap: null, lastMonthlyRecap: null }
   };
 }
@@ -461,6 +475,10 @@ function loadLocalState(){
 // Selon le contexte, elle écrit sur Firestore (compte connecté) ou en local (mode démo).
 function saveState(){
   if(fbDb && currentUser){
+    if(!dataLoaded){
+      console.warn("Écriture Firestore bloquée : les données n'ont pas encore été chargées avec succès.");
+      return;
+    }
     clearTimeout(saveTimer);
     saveTimer = setTimeout(()=>{
       fbDb.collection("users").doc(currentUser.uid).set(state)
@@ -474,16 +492,21 @@ function saveState(){
 
 let state = defaultState();
 
-/* ---------------- Démarrage : config Firebase → auth → chargement des données ---------------- */
-function boot(){
-  let config = null;
-  try{ config = JSON.parse(localStorage.getItem(FB_CONFIG_KEY) || "null"); }catch(e){}
+/* ---------------- Démarrage : config Firebase → auth → chargement des données ----------------
+   La config Firebase n'est pas secrète (c'est un identifiant client public,
+   la sécurité réelle vient des règles Firestore) — elle est donc intégrée
+   ici directement : plus personne n'a besoin de la coller à l'ouverture. */
+const VOLAKO_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAaTdGGUdiYp1pVZKAwLHH69_a_vsSjjog",
+  authDomain: "volako-3c1d8.firebaseapp.com",
+  projectId: "volako-3c1d8",
+  storageBucket: "volako-3c1d8.firebasestorage.app",
+  messagingSenderId: "838612710066",
+  appId: "1:838612710066:web:2f75b9b6ee3afa582b8fab"
+};
 
-  if(!config){
-    document.getElementById("screen-fbconfig").classList.remove("hidden");
-    return;
-  }
-  initFirebase(config);
+function boot(){
+  initFirebase(VOLAKO_FIREBASE_CONFIG);
 }
 
 function initFirebase(config){
@@ -508,20 +531,32 @@ function initFirebase(config){
     if(user){
       currentUser = user;
       document.getElementById("screen-auth").classList.add("hidden");
-      fbDb.collection("users").doc(user.uid).get().then(doc=>{
-        state = Object.assign(defaultState(), doc.exists ? doc.data() : {});
-        if(!doc.exists) saveState();
-        showApp();
-      }).catch(e=>{
-        console.error("Chargement Firestore impossible", e);
-        state = defaultState();
-        showApp();
-      });
+      loadUserData();
     } else {
       currentUser = null;
+      dataLoaded = false;
       document.getElementById("app-shell").classList.add("hidden");
+      document.getElementById("screen-load-error").classList.add("hidden");
       document.getElementById("screen-auth").classList.remove("hidden");
     }
+  });
+}
+
+let dataLoaded = false; // tant que false, saveState() refuse d'écrire sur Firestore
+
+function loadUserData(){
+  document.getElementById("screen-load-error").classList.add("hidden");
+  fbDb.collection("users").doc(currentUser.uid).get().then(doc=>{
+    state = Object.assign(defaultState(), doc.exists ? doc.data() : {});
+    dataLoaded = true;
+    if(!doc.exists) saveState();
+    showApp();
+  }).catch(e=>{
+    console.error("Chargement Firestore impossible", e);
+    // IMPORTANT : on n'entre jamais dans l'app avec un état vide après une
+    // erreur — ça empêche d'écraser accidentellement les vraies données au
+    // prochain enregistrement. On propose juste de réessayer.
+    document.getElementById("screen-load-error").classList.remove("hidden");
   });
 }
 
@@ -565,6 +600,10 @@ document.getElementById("btn-auth-signup").addEventListener("click", ()=>{
   document.getElementById("auth-error").textContent = "";
   fbAuth.createUserWithEmailAndPassword(email, pw)
     .catch(e=> document.getElementById("auth-error").textContent = traduireErreurAuth(e));
+});
+
+document.getElementById("btn-retry-load").addEventListener("click", ()=>{
+  if(currentUser) loadUserData();
 });
 
 document.getElementById("btn-logout").addEventListener("click", ()=>{
@@ -765,8 +804,8 @@ function renderAccueil(){
   const solde = balanceMode==="global" ? t.soldeGlobal : t.soldeSalaire;
   const inAmount = balanceMode==="global" ? (t.salaireIn+t.autreIn) : t.salaireIn;
   const sub = balanceMode==="global"
-    ? "Toutes rentrées confondues, dépenses déduites"
-    : "Salaire uniquement, dépenses déduites (hors autres rentrées)";
+    ? "Tous revenus confondus, dépenses déduites"
+    : "Salaire uniquement, dépenses déduites (hors autres revenus)";
 
   const amtEl = document.getElementById("balance-amount");
   amtEl.textContent = fmtAr(solde);
@@ -827,13 +866,14 @@ function renderTxList(container, txs){
 }
 
 function categoryIcon(cat){
+  if(state.categoryIcons && state.categoryIcons[cat]) return state.categoryIcons[cat];
   const map = {"Nourriture":"🍚","Transport":"🚌","Habillement":"👕","Plaisir":"🎉","Autre":"🧾","Épargne":"🐷"};
   return map[cat] || "🧾";
 }
 function incomeLabel(t){
   if(t.source==="salaire") return "Salaire";
-  const map = {cadeau:"Cadeau", remboursement:"Remboursement", indemnite_mission:"Indemnité de mission", autre:"Autre rentrée"};
-  return map[t.incomeSubtype] || "Autre rentrée";
+  const map = {cadeau:"Cadeau", remboursement:"Remboursement", indemnite_mission:"Indemnité de mission", autre:"Autre revenu"};
+  return map[t.incomeSubtype] || "Autre revenu";
 }
 
 /* ================= DÉTAIL DES OPÉRATIONS ================= */
@@ -1120,12 +1160,16 @@ function renderCategoryChart(canvasId, expenseTxs){
 /* ================= ADMIN CATÉGORIES ================= */
 document.getElementById("btn-add-cat").addEventListener("click", ()=>{
   const input = document.getElementById("new-cat-input");
+  const iconInput = document.getElementById("new-cat-icon");
   const val = input.value.trim();
+  const icon = iconInput.value.trim();
   if(!val) return;
   if(state.categories.includes(val)){ alert("Cette catégorie existe déjà."); return; }
   state.categories.push(val);
+  if(icon) state.categoryIcons[val] = icon;
   saveState();
   input.value = "";
+  iconInput.value = "";
   renderAdmin();
 });
 
@@ -1135,10 +1179,24 @@ function renderAdmin(){
   const container = document.getElementById("cat-list");
   container.innerHTML = state.categories.map(c=>`
     <div class="cat-item">
-      <span>${categoryIcon(c)} ${c}</span>
+      <span><span class="cat-icon-edit" data-icon-for="${c}" style="cursor:pointer;display:inline-block;width:22px;">${categoryIcon(c)}</span> ${c}</span>
       ${c==="Épargne" ? `<span style="font-size:11px;color:var(--cream-dim);">catégorie système</span>` : `<button class="btn small danger" data-cat="${c}">Supprimer</button>`}
     </div>
   `).join("");
+
+  container.querySelectorAll("[data-icon-for]").forEach(span=>{
+    span.addEventListener("click", ()=>{
+      const cat = span.dataset.iconFor;
+      const current = categoryIcon(cat);
+      const val = prompt(`Nouvelle icône pour "${cat}" (un seul emoji) :`, current);
+      if(val===null) return;
+      const trimmed = val.trim();
+      if(!trimmed) return;
+      state.categoryIcons[cat] = trimmed;
+      saveState();
+      renderAdmin();
+    });
+  });
 
   const statusEl = document.getElementById("notif-status");
   const perm = notifPermission();
@@ -1210,7 +1268,7 @@ function openEditTx(id){
       chip.classList.toggle("active", chip.dataset.cat===t.category);
     });
   } else {
-    document.getElementById("modal-add-title").textContent = "Modifier la rentrée d'argent";
+    document.getElementById("modal-add-title").textContent = "Modifier le revenu";
     document.getElementById("expense-fields").classList.add("hidden");
     document.getElementById("income-fields").classList.remove("hidden");
 
